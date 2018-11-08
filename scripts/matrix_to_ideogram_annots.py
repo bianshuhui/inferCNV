@@ -145,26 +145,27 @@ class MatrixToIdeogramAnnots:
     def get_clusters(self, clusters_meta):
         """Assign cells from expression matrix to the appropriate cluster"""
 
-        clusters = clusters_meta
+        cell_annot_name = clusters_meta['cell_annot_name']
+        cell_annot_path = clusters_meta['cell_annot_path']
+        cell_annot_index = clusters_meta['cell_annot_index']
+        cluster_labels = clusters_meta['cluster_labels']
 
-        for name in clusters:
+        clusters = {}
 
-            cells = []
-
+        for name in cluster_labels:
+            clusters[name] = {}
             clusters[name]['cells'] = []
-            cluster_path = clusters[name]['path']
 
-            with open(cluster_path) as f:
-                lines = f.readlines()
+        with open(cell_annot_path) as f:
+            lines = f.readlines()
 
-            for line in lines[3:]:
-                cell = line.split()[0]
-                cells.append(cell)
-
-            clusters[name]['cells'] = cells
+        for line in lines[2:]:
+            columns = line.strip().split()
+            cell = columns[0]
+            cluster_label = columns[cell_annot_index]
+            clusters[cluster_label]['cells'].append(cell)
 
         return clusters
-
 
     def compute_gene_expression_means(self):
         """Compute mean expression for each gene across all and each cluster"""
@@ -216,20 +217,38 @@ class MatrixToIdeogramAnnots:
 
         return scores_lists
 
+def get_cluster_labels(cell_annotation_name, cell_annotation_path):
 
-def get_clusters_meta(names, paths):
+        cluster_labels = set()
+
+        with open(cell_annotation_path) as f:
+            lines = f.readlines()
+
+        # Determine which header is the cell annotation name
+        headers = lines[0].strip().split('\t')
+        for i, header in enumerate(headers):
+            if header == cell_annotation_name:
+                cell_annotation_index = i
+
+        for line in lines[2:]:
+            columns = line.strip().split('\t')
+            cluster_label = columns[cell_annotation_index]
+            cluster_labels.add(cluster_label)
+
+        return cluster_labels, cell_annotation_index
+
+def get_clusters_meta(cell_annot_name, cell_annot_path):
     """Organize cluster args provided via CLI into a more convenient dict"""
+    clusters_meta = {
+        'cell_annot_path': cell_annot_path,
+        'cell_annot_name': cell_annot_name
+    }
 
-    if len(names) != len(paths):
-        raise ValueError('Number of cluster names must equal length of cluster paths')
-
-    clusters_meta = {}
-
-    for i, name in enumerate(names):
-        clusters_meta[name] = {'path': paths[i]}
+    cluster_labels, cell_annot_index = get_cluster_labels(cell_annot_name, cell_annot_path)
+    clusters_meta['cluster_labels'] = cluster_labels
+    clusters_meta['cell_annot_index'] = cell_annot_index
 
     return clusters_meta
-
 
 if __name__ == '__main__':
 
@@ -243,12 +262,10 @@ if __name__ == '__main__':
                     default='\t')
     ap.add_argument('--gen_pos_file',
                     help='Path to gen_pos.txt genomic positions file from inferCNV ')
-    ap.add_argument('--cluster_names',
-                    help='List of cluster names',
-                    nargs='+')  # List must have one or more items
-    ap.add_argument('--cluster_paths',
-                    help='List of cluster paths or URLs',
-                    nargs='+')
+    ap.add_argument('--cell_annotation_name',
+                    help='Name of cell annotation')
+    ap.add_argument('--cell_annotation_path',
+                    help='Path or URL to cell annotation file')
     ap.add_argument('--output_file',
                     help='Path for write output')
 
@@ -257,10 +274,10 @@ if __name__ == '__main__':
     infercnv_output = args.infercnv_output
     infercnv_delimiter = args.infercnv_delimiter
     gen_pos_file = args.gen_pos_file
-    cluster_names = args.cluster_names
-    cluster_paths = args.cluster_paths
+    cell_annot_name = args.cell_annotation_name
+    cell_annot_path = args.cell_annotation_path
     output_file = args.output_file
 
-    clusters_meta = get_clusters_meta(cluster_names, cluster_paths)
+    clusters_meta = get_clusters_meta(cell_annot_name, cell_annot_path)
 
     MatrixToIdeogramAnnots(infercnv_output, infercnv_delimiter, gen_pos_file, clusters_meta, output_file)
